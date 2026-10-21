@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "speech-to-text": {
+      "source": "deepgram/skills",
+      "sourceType": "github",
+      "skillPath": "skills/speech-to-text/SKILL.md",
+      "computedHash": "9e06ccfb99df2110296832902462a80a660b72e40f5997da37e22f1a9c3578a2"
+    }
+  }
+}

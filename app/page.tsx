@@ -73,12 +73,12 @@ const DashboardMainPageV2: NextPage = () => {
         <section className="grid flex-1 grid-cols-3 gap-4">
           <Link
             href="/ask-a-favour"
-            className="flex min-h-[300px] cursor-pointer flex-col items-center justify-between rounded-[30px] bg-[#d71920] px-4 pb-8 pt-12 text-white no-underline hover:bg-[#fc4047]"
+            className="flex min-h-[300px] cursor-pointer flex-col items-center justify-center gap-8 rounded-[30px] bg-[#d71920] px-4 py-8 text-white no-underline hover:bg-[#fc4047]"
           >
             <Image
-              className="h-[145px] w-[151px] object-contain"
-              width={151}
-              height={145}
+              className="h-[295px] w-[212px] object-contain"
+              width={212}
+              height={205}
               alt=""
               src="/helping-hands-1.svg"
             />
@@ -90,11 +90,11 @@ const DashboardMainPageV2: NextPage = () => {
 
           <Link
             href="/security_and_safety"
-            className="flex min-h-[300px] cursor-pointer flex-col items-center justify-between rounded-[30px] border border-[#e6e4df] bg-white px-4 pb-8 pt-12 text-[#0b1322] hover:border-[#ccc9c7] hover:bg-[#e6e6e6]">
+            className="flex min-h-[300px] cursor-pointer flex-col items-center justify-center gap-8 rounded-[30px] border border-[#e6e4df] bg-white px-4 py-8 text-[#0b1322] hover:border-[#ccc9c7] hover:bg-[#e6e6e6]">
             <Image
-              className="h-[183px] w-[191px] object-contain"
-              width={191}
-              height={183}
+              className="h-[295px] w-[267px] object-contain"
+              width={267}
+              height={256}
               alt=""
               src="/security-guard-1.svg"
             />
@@ -107,12 +107,12 @@ const DashboardMainPageV2: NextPage = () => {
 
           <Link
             href="/weather"
-            className="flex min-h-[300px] cursor-pointer flex-col items-center justify-between rounded-[30px] border border-[#e6e4df] bg-white px-4 pb-8 pt-12 text-[#0b1322] no-underline hover:border-[#ccc9c7] hover:bg-[#e6e6e6]"
+            className="flex min-h-[300px] cursor-pointer flex-col items-center justify-center gap-8 rounded-[30px] border border-[#e6e4df] bg-white px-4 py-8 text-[#0b1322] no-underline hover:border-[#ccc9c7] hover:bg-[#e6e6e6]"
           >
             <Image
-              className="h-[211px] w-[220px] object-contain"
-              width={220}
-              height={211}
+              className="h-[295px] w-[308px] object-contain"
+              width={308}
+              height={295}
               alt=""
               src="/weather-cloud-1.svg"
             />
