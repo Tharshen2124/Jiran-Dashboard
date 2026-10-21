@@ -1,4 +1,12 @@
 import Link from "next/link";
+import { Suspense } from "react";
+import {
+  db,
+  FAVOUR_FIELDS,
+  formatTime,
+  HOUSE_ID,
+  type Favour,
+} from "../../../lib/supabase";
 
 const BackIcon = () => (
   <svg
@@ -28,21 +36,97 @@ const CheckIcon = () => (
   </svg>
 );
 
-/* ---------- Request data: edit these to change what the page shows ---------- */
+async function RequestDetails({
+  searchParams,
+}: {
+  searchParams: Promise<{ id?: string }>;
+}) {
+  const { id } = await searchParams;
+  // Scoped to this house: the secret key bypasses RLS.
+  const { data, error } = await db
+    .from("favours")
+    .select(FAVOUR_FIELDS)
+    .eq("id", id ?? "")
+    .eq("house_id", HOUSE_ID)
+    .maybeSingle();
 
-const request = {
-  title: "Collect medicine from Almara Pharmacy",
-  message:
-    "Could you swing by Almara Pharmacy and collect my medicine for me? I'd go myself but I'm a bit tied up today. They should already have it ready, it's under my name, so you can just tell them you're picking it up for me. Oh and if they ask for anything, I can send you a photo of the prescription. Thanks so much, I really appreciate it.",
-};
+  if (error || !data) {
+    if (error) console.error("Failed to load request:", error);
+    return <p className="m-0 text-xl">This request could not be found.</p>;
+  }
 
-const progress: { title: string; detail: string; done: boolean }[] = [
-  { title: "Request Sent", detail: "Today, 10:15 am", done: true },
-  { title: "Helper Found", detail: "Aiman, No. 22 Jalan SP 10/3", done: true },
-  { title: "Done", detail: "Not yet", done: false },
-];
+  const request = data as unknown as Favour;
+  const helped = request.helper !== null;
+  const finished = request.status === "completed" || request.status === "cancelled";
 
-export default function RequestDetailsPage() {
+  const progress: { title: string; detail: string; done: boolean }[] = [
+    { title: "Request Sent", detail: formatTime(request.created_at), done: true },
+    {
+      title: "Helper Found",
+      detail: helped ? request.helper?.full_name ?? "A neighbour" : "Not yet",
+      done: helped,
+    },
+    {
+      title: request.status === "cancelled" ? "Cancelled" : "Done",
+      detail: finished ? formatTime(request.updated_at) : "Not yet",
+      done: request.status === "completed",
+    },
+  ];
+
+  return (
+    <section className="grid flex-1 grid-cols-1 gap-4 md:grid-cols-[1.1fr_1fr]">
+      {/* Request text */}
+      <article className="rounded-[30px] border border-[#e6e4df] bg-white p-6">
+        <h2 className="m-0 text-2xl font-bold md:text-3xl">
+          {request.title}
+        </h2>
+        {request.description && (
+          <p className="m-0 mt-4 text-lg leading-relaxed text-[#333] md:text-xl">
+            {request.description}
+          </p>
+        )}
+      </article>
+
+      {/* Progress */}
+      <article className="rounded-[30px] border border-[#e6e4df] bg-white p-6">
+        <h2 className="m-0 text-2xl font-bold md:text-3xl">Progress</h2>
+
+        <ol className="m-0 mt-6 list-none p-0">
+          {progress.map((step, i) => {
+            const isLast = i === progress.length - 1;
+            return (
+              <li key={step.title} className="flex gap-4">
+                <div className="flex flex-col items-center">
+                  <span
+                    className={`flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-full ${
+                      step.done ? "bg-[#12805c]" : "bg-[#777]"
+                    }`}
+                  >
+                    {step.done && <CheckIcon />}
+                  </span>
+                  {!isLast && (
+                    <span className="min-h-[28px] w-[4px] flex-1 bg-[#12805c]" />
+                  )}
+                </div>
+
+                <div className={isLast ? "" : "pb-6"}>
+                  <p className="m-0 text-xl font-bold">{step.title}</p>
+                  <p className="m-0 text-base text-[#555]">{step.detail}</p>
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      </article>
+    </section>
+  );
+}
+
+export default function RequestDetailsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ id?: string }>;
+}) {
   return (
     <div className="flex min-h-screen w-full flex-col bg-[#f7f9f6] text-[#0b1322] [font-family:Metropolis,ui-sans-serif,system-ui,sans-serif]">
       {/* Top colour bar */}
@@ -67,49 +151,9 @@ export default function RequestDetailsPage() {
           </Link>
         </header>
 
-        <section className="grid flex-1 grid-cols-1 gap-4 md:grid-cols-[1.1fr_1fr]">
-          {/* Request text */}
-          <article className="rounded-[30px] border border-[#e6e4df] bg-white p-6">
-            <h2 className="m-0 text-2xl font-bold md:text-3xl">
-              {request.title}
-            </h2>
-            <p className="m-0 mt-4 text-lg leading-relaxed text-[#333] md:text-xl">
-              {request.message}
-            </p>
-          </article>
-
-          {/* Progress */}
-          <article className="rounded-[30px] border border-[#e6e4df] bg-white p-6">
-            <h2 className="m-0 text-2xl font-bold md:text-3xl">Progress</h2>
-
-            <ol className="m-0 mt-6 list-none p-0">
-              {progress.map((step, i) => {
-                const isLast = i === progress.length - 1;
-                return (
-                  <li key={step.title} className="flex gap-4">
-                    <div className="flex flex-col items-center">
-                      <span
-                        className={`flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-full ${
-                          step.done ? "bg-[#12805c]" : "bg-[#777]"
-                        }`}
-                      >
-                        {step.done && <CheckIcon />}
-                      </span>
-                      {!isLast && (
-                        <span className="min-h-[28px] w-[4px] flex-1 bg-[#12805c]" />
-                      )}
-                    </div>
-
-                    <div className={isLast ? "" : "pb-6"}>
-                      <p className="m-0 text-xl font-bold">{step.title}</p>
-                      <p className="m-0 text-base text-[#555]">{step.detail}</p>
-                    </div>
-                  </li>
-                );
-              })}
-            </ol>
-          </article>
-        </section>
+        <Suspense fallback={<p className="m-0 text-xl">Loading request...</p>}>
+          <RequestDetails searchParams={searchParams} />
+        </Suspense>
       </main>
     </div>
   );

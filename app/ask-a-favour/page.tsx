@@ -2,7 +2,7 @@
 import type { NextPage } from "next";
 import Link from "next/link";
 import { useRef, useState } from "react";
-import { supabase } from "../lib/supabase";
+import { createFavour } from "./actions";
 
 const BackIcon = () => (
   <svg width="24" height="24" viewBox="0 0 24 24"
@@ -26,7 +26,6 @@ const MicIcon = () => (
 );
 
 const DashboardAskAFavourPage1: NextPage = () => {
-  const [text, setText] = useState("");
   const [recording, setRecording] = useState(false);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
@@ -34,13 +33,16 @@ const DashboardAskAFavourPage1: NextPage = () => {
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
+  // True while the button is held; lets a quick release cancel a pending start.
+  const activeRef = useRef(false);
 
   const baseTextRef = useRef("");
   const finalTextRef = useRef("");
   const interimTextRef = useRef("");
 
   const startRecording = async () => {
-    if (recording || recorderRef.current) return;
+    if (activeRef.current) return;
+    activeRef.current = true;
 
     setError("");
     setStatus("Requesting microphone access...");
@@ -82,7 +84,7 @@ const DashboardAskAFavourPage1: NextPage = () => {
 
       socketRef.current = socket;
 
-      baseTextRef.current = text.trimEnd();
+      baseTextRef.current = requestText.trimEnd();
       finalTextRef.current = "";
       interimTextRef.current = "";
 
@@ -93,10 +95,17 @@ const DashboardAskAFavourPage1: NextPage = () => {
           interimTextRef.current,
         ].filter((part) => part.length > 0);
 
-        setText(parts.join(" "));
+        setRequestText(parts.join(" "));
       };
 
       socket.onopen = () => {
+        // Button was released before the connection was ready.
+        if (!activeRef.current) {
+          stream.getTracks().forEach((track) => track.stop());
+          socket.close();
+          return;
+        }
+
         try {
           const recorder = new MediaRecorder(stream);
           recorderRef.current = recorder;
@@ -155,9 +164,11 @@ const DashboardAskAFavourPage1: NextPage = () => {
       socket.onclose = () => {
         if (socketRef.current === socket) {
           socketRef.current = null;
+          setStatus("");
         }
       };
     } catch (err) {
+      activeRef.current = false;
       streamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
 
@@ -171,6 +182,9 @@ const DashboardAskAFavourPage1: NextPage = () => {
   };
 
   const stopRecording = () => {
+    if (!activeRef.current) return;
+    activeRef.current = false;
+
     const recorder = recorderRef.current;
     const socket = socketRef.current;
 
@@ -187,24 +201,16 @@ const DashboardAskAFavourPage1: NextPage = () => {
     setRecording(false);
     setStatus("Finishing transcription...");
 
-    // Allow the final audio chunk to be sent before closing.
+    // Send the last audio chunk, then CloseStream. Deepgram flushes the
+    // final transcripts and closes the socket itself; onclose clears status.
     if (socket && socket.readyState === WebSocket.OPEN) {
       const finish = () => {
         if (socket.readyState === WebSocket.OPEN) {
           socket.send(JSON.stringify({ type: "CloseStream" }));
         }
 
-        window.setTimeout(() => {
-          if (socket.readyState !== WebSocket.CLOSED) {
-            socket.close();
-          }
-
-          if (socketRef.current === socket) {
-            socketRef.current = null;
-          }
-
-          setStatus("");
-        }, 500);
+        // Fallback in case Deepgram never closes the connection.
+        window.setTimeout(() => socket.close(), 5000);
       };
 
       if (recorder && recorder.state === "recording") {
@@ -224,49 +230,25 @@ const DashboardAskAFavourPage1: NextPage = () => {
   const [message, setMessage] = useState("");
 
   const handleSendRequest = async () => {
-    const text = requestText.trim();
-
-    if (!text) {
-      setMessage("Please enter what help you need.");
-      return;
-    }
-
     setSending(true);
     setMessage("");
 
     try {
-      // This requires an authenticated Supabase user.
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-
-      if (userError) throw userError;
-
-      if (!user) {
-        setMessage("Please log in before submitting a request.");
+      const { error } = await createFavour(requestText);
+      if (error) {
+        setMessage(error);
         return;
       }
 
-      const { error } = await supabase
-        .from("favours")
-        .insert({
-          title: text,
-          requester_id: user.id,
-          // Add other required columns once you confirm the schema.
-        });
-
-      if (error) throw error;
-
       setRequestText("");
-      setMessage("Your request has been submitted successfully.");
-    } catch (error) {
-      console.error("Failed to submit request:", error);
+      setMessage("Your request has been sent to your neighbours.");
+    } catch {
       setMessage("Failed to submit your request. Please try again.");
     } finally {
       setSending(false);
     }
   };
+
   return (
     <div className="flex min-h-screen w-full flex-col bg-[#f7f9f6] text-[#0b1322] [font-family:Metropolis,ui-sans-serif,system-ui,sans-serif]">
       <div className="grid h-4 w-full grid-cols-4">
@@ -318,6 +300,12 @@ const DashboardAskAFavourPage1: NextPage = () => {
             </p>
           )}
 
+          {message && (
+            <p role="status" className="m-0 text-lg font-semibold">
+              {message}
+            </p>
+          )}
+
           {error && (
             <p role="alert" className="m-0 text-sm text-red-600">
               {error}
@@ -333,9 +321,7 @@ const DashboardAskAFavourPage1: NextPage = () => {
                 void startRecording();
               }}
               onPointerUp={stopRecording}
-              onPointerLeave={() => {
-                if (recording) stopRecording();
-              }}
+              onPointerLeave={stopRecording}
               onPointerCancel={stopRecording}
               onContextMenu={(event) => event.preventDefault()}
               className={`flex touch-none cursor-pointer select-none items-center justify-center gap-2 rounded-[14px] border-none py-5 text-2xl font-bold text-white ${

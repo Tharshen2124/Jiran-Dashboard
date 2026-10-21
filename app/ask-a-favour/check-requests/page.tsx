@@ -1,4 +1,14 @@
 import Link from "next/link";
+import { connection } from "next/server";
+import { Suspense } from "react";
+import {
+  db,
+  FAVOUR_FIELDS,
+  formatTime,
+  HOUSE_ID,
+  type Favour,
+  type Status,
+} from "../../lib/supabase";
 
 const BackIcon = () => (
   <svg
@@ -20,37 +30,66 @@ const toneClasses: Record<Tone, string> = {
   grey: "bg-[#777] text-white",
 };
 
-/* ---------- Requests data: edit this list to change the rows ---------- */
+const STATUS: Record<Status, { label: string; tone: Tone }> = {
+  open: { label: "Waiting for helper", tone: "yellow" },
+  accepted: { label: "Helper found", tone: "green" },
+  in_progress: { label: "Helper on the way", tone: "green" },
+  completed: { label: "Done", tone: "grey" },
+  cancelled: { label: "Cancelled", tone: "grey" },
+};
 
-const requests: {
-  id: number;
-  title: string;
-  status: string;
-  tone: Tone;
-  asked: string;
-}[] = [
-  {
-    id: 1,
-    title: "Collect medicine from Almara Pharmacy",
-    status: "Helper found",
-    tone: "green",
-    asked: "Asked today, 10:15 am",
-  },
-  {
-    id: 2,
-    title: "Fix the dripping kitchen tap and check why my sink keeps leaking",
-    status: "Waiting for helper",
-    tone: "yellow",
-    asked: "Asked today, 10:15 am",
-  },
-  {
-    id: 3,
-    title: "Sweep my front porch",
-    status: "Helper found",
-    tone: "grey",
-    asked: "Asked today, 10:15 am",
-  },
-];
+async function RequestList() {
+  await connection();
+  const { data, error } = await db
+    .from("favours")
+    .select(FAVOUR_FIELDS)
+    .eq("house_id", HOUSE_ID)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("Failed to load requests:", error);
+    return <p className="m-0 text-xl">Could not load your requests.</p>;
+  }
+
+  const requests = data as unknown as Favour[];
+  if (!requests.length) {
+    return <p className="m-0 text-xl">You haven&apos;t asked for any favours yet.</p>;
+  }
+
+  return (
+    <ul className="m-0 flex list-none flex-col gap-3 p-0">
+      {requests.map((r) => (
+        <li
+          key={r.id}
+          className="flex items-center justify-between gap-6 rounded-[20px] border border-[#e6e4df] bg-white px-6 py-5"
+        >
+          <div className="flex min-w-0 flex-col gap-2">
+            <h2 className="m-0 truncate text-xl font-bold md:text-2xl">
+              {r.title}
+            </h2>
+            <div className="flex flex-wrap items-center gap-3">
+              <span
+                className={`rounded-full px-4 py-1 text-base font-bold ${toneClasses[STATUS[r.status].tone]}`}
+              >
+                {STATUS[r.status].label}
+              </span>
+              <span className="text-base text-[#777]">
+                Asked {formatTime(r.created_at)}
+              </span>
+            </div>
+          </div>
+
+          <Link
+            href={`/ask-a-favour/check-requests/details?id=${r.id}`}
+            className="shrink-0 cursor-pointer rounded-[14px] bg-[#0b1322] px-10 py-4 text-xl font-bold text-white no-underline hover:bg-[#1c2a44] md:text-2xl"
+          >
+            Details
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 export default function CheckRequestsPage() {
   return (
@@ -78,34 +117,9 @@ export default function CheckRequestsPage() {
         </header>
 
         {/* Request list */}
-        <ul className="m-0 flex list-none flex-col gap-3 p-0">
-          {requests.map((r) => (
-            <li
-              key={r.id}
-              className="flex items-center justify-between gap-6 rounded-[20px] border border-[#e6e4df] bg-white px-6 py-5"
-            >
-              <div className="flex min-w-0 flex-col gap-2">
-                <h2 className="m-0 truncate text-xl font-bold md:text-2xl">
-                  {r.title}
-                </h2>
-                <div className="flex flex-wrap items-center gap-3">
-                  <span
-                    className={`rounded-full px-4 py-1 text-base font-bold ${toneClasses[r.tone]}`}
-                  >
-                    {r.status}
-                  </span>
-                  <span className="text-base text-[#777]">{r.asked}</span>
-                </div>
-              </div>
-
-              <Link
-                href="/ask-a-favour/check-requests/details" className="shrink-0 cursor-pointer rounded-[14px] bg-[#0b1322] px-10 py-4 text-xl font-bold text-white no-underline hover:bg-[#1c2a44] md:text-2xl"
-              >
-                Details
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <Suspense fallback={<p className="m-0 text-xl">Loading your requests...</p>}>
+          <RequestList />
+        </Suspense>
       </main>
     </div>
   );
