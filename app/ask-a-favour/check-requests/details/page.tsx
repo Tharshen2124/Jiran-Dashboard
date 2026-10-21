@@ -5,8 +5,10 @@ import {
   FAVOUR_FIELDS,
   formatTime,
   HOUSE_ID,
+  startOfToday,
   type Favour,
 } from "../../../lib/supabase";
+import { BumpButton } from "./bump-button";
 
 const BackIcon = () => (
   <svg
@@ -76,15 +78,38 @@ async function RequestDetails({
   return (
     <section className="grid flex-1 grid-cols-1 gap-4 md:grid-cols-[1.1fr_1fr]">
       {/* Request text */}
-      <article className="rounded-[30px] border border-[#e6e4df] bg-white p-6">
-        <h2 className="m-0 text-2xl font-bold md:text-3xl">
-          {request.title}
-        </h2>
-        {request.description && (
-          <p className="m-0 mt-4 text-lg leading-relaxed text-[#333] md:text-xl">
-            {request.description}
+      <article className="flex flex-col gap-6 rounded-[30px] border border-[#e6e4df] bg-white p-6">
+        <div>
+          <h2 className="m-0 text-2xl font-bold md:text-3xl">
+            {request.title}
+          </h2>
+          {request.description && (
+            <p className="m-0 mt-4 text-lg leading-relaxed text-[#333] md:text-xl">
+              {request.description}
+            </p>
+          )}
+        </div>
+
+        <div className="mt-auto flex flex-col gap-4 border-t border-[#e6e4df] pt-5">
+          <p className="m-0 text-xl font-bold md:text-2xl">
+            Worth {request.points} {request.points === 1 ? "point" : "points"}
+            {request.bump_points > 0 && (
+              <span className="font-normal text-[#555]">
+                {" "}(+{request.bump_points} from bumps)
+              </span>
+            )}
           </p>
-        )}
+
+          {request.status === "open" && (
+            <BumpButton
+              id={request.id}
+              bumpedToday={
+                request.bumped_at !== null &&
+                new Date(request.bumped_at) >= startOfToday()
+              }
+            />
+          )}
+        </div>
       </article>
 
       {/* Progress */}
