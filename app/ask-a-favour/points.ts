@@ -5,21 +5,37 @@ import { askGroq } from "../lib/groq";
 
 const EFFORT_TIER = { light: 1, moderate: 1.5, heavy: 2 };
 const MAX_MULTIPLIER = 3;
+const BUMP_URGENCY = 0.25;
 
 export type PointFactors = {
   minutes: number;
   effort: keyof typeof EFFORT_TIER;
   skillRisk: number; // 0 to 0.5
-  urgency: number; // +0.25 for same-day
+  urgency: number; // +0.25 for same-day, +0.25 per bump
 };
 
+// Multiply before dividing so halves (e.g. 2.5) stay exact and round up.
+const toPoints = (minutes: number, multiplier: number) =>
+  Math.max(1, Math.round((minutes * multiplier) / 15));
+
 export function calculatePoints({ minutes, effort, skillRisk, urgency }: PointFactors) {
-  const multiplier = Math.min(
-    EFFORT_TIER[effort] * (1 + skillRisk + urgency),
-    MAX_MULTIPLIER
+  return toPoints(
+    minutes,
+    Math.min(EFFORT_TIER[effort] * (1 + skillRisk + urgency), MAX_MULTIPLIER)
   );
-  // Multiply before dividing so halves (e.g. 2.5) stay exact and round up.
-  return Math.max(1, Math.round((minutes * multiplier) / 15));
+}
+
+// A bump adds urgency, so the favour is worth more. Small favours would round
+// that away, so a bump always adds at least 1 point, until the multiplier cap.
+export function bump(factors: PointFactors, points: number) {
+  const bumped = { ...factors, urgency: factors.urgency + BUMP_URGENCY };
+  return {
+    factors: bumped,
+    points: Math.min(
+      Math.max(calculatePoints(bumped), points + 1),
+      toPoints(factors.minutes, MAX_MULTIPLIER)
+    ),
+  };
 }
 
 const PROMPT = `You size up a favour an elderly resident asks of their neighbours. Return:
@@ -53,18 +69,19 @@ const clamp = (n: number, min: number, max: number) =>
   Math.min(Math.max(Number(n) || min, min), max);
 
 // AI fills in the formula's inputs from the favour's description.
-export async function estimatePoints(description: string) {
+export async function estimateFactors(description: string): Promise<PointFactors> {
   try {
     const ai = JSON.parse(await askGroq(PROMPT, description, SCHEMA));
     // Clamp the AI's numbers so a bad estimate can't mint a huge reward.
-    return calculatePoints({
+    return {
       minutes: clamp(ai.minutes, 5, 240),
       effort: ai.effort,
       skillRisk: clamp(ai.skillRisk, 0, 0.5),
       urgency: ai.sameDay ? 0.25 : 0,
-    });
+    };
   } catch (err) {
     console.error("Failed to estimate points:", err);
-    return 1; // The formula's minimum, so an outage never blocks a request.
+    // Worth the formula's minimum of 1 point, so an outage never blocks a request.
+    return { minutes: 15, effort: "light", skillRisk: 0, urgency: 0 };
   }
 }

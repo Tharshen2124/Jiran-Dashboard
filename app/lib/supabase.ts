@@ -21,11 +21,21 @@ export type Favour = {
   status: Status;
   created_at: string;
   updated_at: string;
+  points: number;
+  bumped_at: string | null;
+  bump_points: number;
   helper: { full_name: string | null } | null;
 };
 
 export const FAVOUR_FIELDS =
-  "id, title, description, status, created_at, updated_at, helper:profiles!helper_id(full_name)";
+  "id, title, description, status, created_at, updated_at, points, bumped_at, bump_points, helper:profiles!helper_id(full_name)";
+
+// Midnight in Malaysia (UTC+8, no daylight saving). Bumps reset then.
+export const startOfToday = () =>
+  new Date(
+    new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" }) +
+      "T00:00:00+08:00"
+  );
 
 export const formatTime = (iso: string) =>
   new Date(iso).toLocaleString("en-GB", {
