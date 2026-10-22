@@ -5,7 +5,7 @@ import {
   db,
   FAVOUR_FIELDS,
   formatTime,
-  HOUSE_ID,
+  getHouseId,
   type Favour,
   type Status,
 } from "../../lib/supabase";
@@ -40,10 +40,11 @@ const STATUS: Record<Status, { label: string; tone: Tone }> = {
 
 async function RequestList() {
   await connection();
+  const houseId = await getHouseId();
   const { data, error } = await db
     .from("favours")
     .select(FAVOUR_FIELDS)
-    .eq("house_id", HOUSE_ID)
+    .eq("house_id", houseId)
     .order("created_at", { ascending: false });
 
   if (error) {
