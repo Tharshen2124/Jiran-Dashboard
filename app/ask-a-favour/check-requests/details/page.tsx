@@ -4,7 +4,7 @@ import {
   db,
   FAVOUR_FIELDS,
   formatTime,
-  HOUSE_ID,
+  getHouseId,
   startOfToday,
   type Favour,
 } from "../../../lib/supabase";
@@ -44,12 +44,13 @@ async function RequestDetails({
   searchParams: Promise<{ id?: string }>;
 }) {
   const { id } = await searchParams;
+  const houseId = await getHouseId();
   // Scoped to this house: the secret key bypasses RLS.
   const { data, error } = await db
     .from("favours")
     .select(FAVOUR_FIELDS)
     .eq("id", id ?? "")
-    .eq("house_id", HOUSE_ID)
+    .eq("house_id", houseId)
     .maybeSingle();
 
   if (error || !data) {

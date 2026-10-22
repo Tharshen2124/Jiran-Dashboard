@@ -2,7 +2,7 @@
 
 import { refresh } from "next/cache";
 import { askGroq } from "../lib/groq";
-import { db, HOUSE_ID, startOfToday } from "../lib/supabase";
+import { db, getHouseId, startOfToday } from "../lib/supabase";
 import { bump, calculatePoints, estimateFactors, type PointFactors } from "./points";
 
 // Asks Groq for a short title. Falls back to the start of the description so
@@ -26,12 +26,13 @@ async function makeTitle(description: string) {
 export async function createFavour(text: string) {
   const description = text.trim().slice(0, 2000);
   if (!description) return { error: "Please enter what help you need." };
+  const houseId = await getHouseId();
 
   // Helpers need the house's address as the favour's location.
   const { data: house, error: houseError } = await db
     .from("houses")
     .select("address")
-    .eq("id", HOUSE_ID)
+    .eq("id", houseId)
     .single();
 
   if (houseError) {
@@ -50,7 +51,7 @@ export async function createFavour(text: string) {
     location: house.address,
     points: calculatePoints(factors),
     point_factors: factors,
-    house_id: HOUSE_ID,
+    house_id: houseId,
   });
 
   if (error) {
@@ -64,11 +65,12 @@ export async function createFavour(text: string) {
 // Moves an open request back to the top of the neighbours' feed and adds
 // points. Once a day per request.
 export async function bumpFavour(id: string) {
+  const houseId = await getHouseId();
   const { data: favour } = await db
     .from("favours")
     .select("points, point_factors, bump_points")
     .eq("id", id)
-    .eq("house_id", HOUSE_ID)
+    .eq("house_id", houseId)
     .maybeSingle();
   if (!favour) return { error: "This request could not be found." };
 
@@ -91,7 +93,7 @@ export async function bumpFavour(id: string) {
       bumped_at: new Date().toISOString(),
     })
     .eq("id", id)
-    .eq("house_id", HOUSE_ID)
+    .eq("house_id", houseId)
     .eq("status", "open")
     .or(`bumped_at.is.null,bumped_at.lt.${startOfToday().toISOString()}`)
     .select("id");

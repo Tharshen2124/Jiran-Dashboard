@@ -1,6 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 
-// Server-only. Each dashboard is one row in `houses` (HOUSE_ID). There's no
+// Server-only. Each dashboard is one row in `houses` (getHouseId). There's no
 // login on the device, so the server talks to Supabase with the secret key
 // and scopes every query to that house.
 // ponytail: one secret key per device; swap for per-house credentials before a real rollout.
@@ -10,7 +12,15 @@ export const db = createClient(
   { auth: { persistSession: false } }
 );
 
-export const HOUSE_ID = process.env.HOUSE_ID!;
+export const HOUSE_COOKIE = "house_id";
+
+// The house this dashboard is mounted at. For the demo it's picked on /choose-house and kept in a cookie
+// (proxy.ts sends a dashboard without one there first).
+export async function getHouseId() {
+  const id = (await cookies()).get(HOUSE_COOKIE)?.value;
+  if (!id) redirect("/choose-house");
+  return id;
+}
 
 export type Status = "open" | "accepted" | "in_progress" | "completed" | "cancelled";
 

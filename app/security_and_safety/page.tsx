@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { Suspense } from "react";
+import { db, formatTime, getHouseId } from "../lib/supabase";
+import { AutoRefresh } from "./auto-refresh";
 
 const BackIcon = () => (
   <svg
@@ -40,9 +43,77 @@ const patrols: { id: number; street: string; minutesAgo: number }[] = [
   { id: 4, street: "Jalan Elmina 8", minutesAgo: 35 },
 ];
 
+type Trip = { user_id: string; eta: string; resident: { full_name: string | null } | null };
+
+// Residents of this house on their way home (Guardian Angel set on their phone, not checked in yet).
+async function tripsHome() {
+  const { data, error } = await db
+    .from("guardian_angels")
+    .select("user_id, eta, resident:profiles(full_name)")
+    .eq("house_id", await getHouseId())
+    .is("arrived_at", null)
+    .order("eta");
+  if (error) {
+    console.error("Failed to load Guardian Angel:", error);
+    return null;
+  }
+  const now = Date.now();
+  return (data as unknown as Trip[]).map((t) => ({ ...t, late: Date.parse(t.eta) < now }));
+}
+
+async function GuardianAngelStatus() {
+  const trips = await tripsHome();
+  if (!trips) return <p className="m-0 text-xl">Could not load Guardian Angel.</p>;
+  const active = trips.length > 0;
+
+  return (
+    <>
+      <p
+        role="status"
+        className={`m-0 flex items-center gap-3 rounded-[20px] px-6 py-5 text-xl font-bold md:text-2xl ${
+          active ? "bg-[#12805c] text-white" : "bg-[#e6e6e6] text-[#555]"
+        }`}
+      >
+        <span
+          className={`h-3 w-3 shrink-0 rounded-full ${active ? "animate-pulse bg-white" : "bg-[#777]"}`}
+          aria-hidden="true"
+        />
+        {active ? "Surveillance system is active now" : "Surveillance system is shut off"}
+      </p>
+
+      {active ? (
+        <ul className="m-0 flex list-none flex-col gap-3 p-0">
+          {trips.map((t) => (
+            <li
+              key={t.user_id}
+              className="flex items-center justify-between gap-4 rounded-[20px] border border-[#e6e4df] px-6 py-5"
+            >
+              <span className="text-xl font-bold md:text-2xl">
+                {t.resident?.full_name ?? "A resident"} is on the way home
+              </span>
+              <span
+                className={`shrink-0 rounded-full px-4 py-1 text-base font-bold ${
+                  t.late ? "bg-[#d71920] text-white" : "bg-[#fcaf17] text-[#0b1322]"
+                }`}
+              >
+                {t.late ? "Late, expected" : "Expected"} {formatTime(t.eta)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="m-0 text-xl text-[#777]">
+          No one is on the way home right now. Set a Guardian Angel in the Jiran app on your phone.
+        </p>
+      )}
+    </>
+  );
+}
+
 export default function SecurityPage() {
   return (
     <div className="flex min-h-screen w-full flex-col bg-[#f7f9f6] text-[#0b1322] [font-family:Metropolis,ui-sans-serif,system-ui,sans-serif]">
+      <AutoRefresh />
       {/* Top colour bar */}
       <div className="grid h-4 w-full grid-cols-4">
         <div className="bg-[#d71920]" />
@@ -79,11 +150,11 @@ export default function SecurityPage() {
               you before alerting your trusted neighbours.
             </p>
 
-            <button className="mt-auto cursor-pointer rounded-[20px] border-none bg-[#fcaf17] px-8 py-6 text-xl font-bold text-[#0b1322] hover:bg-[#ffc23d] md:text-2xl">
-              Check your phone for any active guardian angel
-            </button>
+            <Suspense fallback={<p className="m-0 text-xl">Loading Guardian Angel...</p>}>
+              <GuardianAngelStatus />
+            </Suspense>
 
-            <p className="m-0 text-center text-base text-[#777]">
+            <p className="m-0 mt-auto text-center text-base text-[#777]">
               Don&apos;t forget to check in if you have set a guardian angel.
             </p>
           </article>

@@ -123,6 +123,13 @@ const DashboardMainPageV2: NextPage = () => {
             </b>
           </Link>
         </section>
+
+        <Link
+          href="/choose-house"
+          className="self-end text-base text-[#777] underline-offset-4 hover:underline"
+        >
+          Demo only: switch house
+        </Link>
       </main>
     </div>
   );
