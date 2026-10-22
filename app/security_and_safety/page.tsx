@@ -29,19 +29,101 @@ const pillClasses: Record<Tone, string> = {
   red: "bg-[#d71920] text-white",
 };
 
-// Up to 10 min is fine, up to 20 min is getting stale, anything later is overdue.
-const toneFor = (minutesAgo: number): Tone =>
-  minutesAgo <= 10 ? "green" : minutesAgo <= 20 ? "yellow" : "red";
+// A jalan counts as patrolled for 2 hours after a guard passes it, like in the Jiran app (PATROL_WINDOW_MS in
+// my-app lib/patrols.ts). Guards do a round every 8 hours, so after that it's overdue.
+const PATROLLED_MIN = 120;
+const toneFor = (minutesAgo: number | null): Tone =>
+  minutesAgo === null ? "red" : minutesAgo <= PATROLLED_MIN ? "green" : minutesAgo <= 480 ? "yellow" : "red";
 
-/* ---------- Patrols data: edit this list to change the rows ---------- */
-/* Later, fill this from the guard check-in events (e.g. Supabase). */
+const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+const ago = (min: number) =>
+  min < 60
+    ? rtf.format(-min, "minute")
+    : min < 1440
+      ? rtf.format(-Math.floor(min / 60), "hour")
+      : rtf.format(-Math.floor(min / 1440), "day");
 
-const patrols: { id: number; street: string; minutesAgo: number }[] = [
-  { id: 1, street: "Jalan Elmina 3", minutesAgo: 5 },
-  { id: 2, street: "Jalan Elmina 4", minutesAgo: 15 },
-  { id: 3, street: "Jalan Elmina 6", minutesAgo: 21 },
-  { id: 4, street: "Jalan Elmina 8", minutesAgo: 35 },
-];
+type Jalan = { jalan: string; lastAt: string | null; minutesAgo: number | null };
+
+// Every jalan's latest patrol, most recent first, and this house's jalan. Guards' phones record a patrol event when
+// they pass a checkpoint (each jalan has two, one per section); the secret key reads them past RLS.
+async function patrols() {
+  const [house, checkpoints] = await Promise.all([
+    db.from("houses").select("address").eq("id", await getHouseId()).single(),
+    db
+      .from("checkpoints")
+      .select("jalan, patrol_events(created_at)")
+      .order("created_at", { referencedTable: "patrol_events", ascending: false })
+      .limit(1, { referencedTable: "patrol_events" }),
+  ]);
+  if (house.error || checkpoints.error) {
+    console.error("Failed to load patrols:", house.error ?? checkpoints.error);
+    return null;
+  }
+
+  const latest = new Map<string, string | null>();
+  for (const c of checkpoints.data as { jalan: string; patrol_events: { created_at: string }[] }[]) {
+    const at = c.patrol_events[0]?.created_at ?? null;
+    const prev = latest.get(c.jalan);
+    if (!prev || (at && Date.parse(at) > Date.parse(prev))) latest.set(c.jalan, at);
+  }
+  const now = Date.now();
+  const jalans: Jalan[] = [...latest]
+    .map(([jalan, lastAt]) => ({ jalan, lastAt, minutesAgo: lastAt ? Math.floor((now - Date.parse(lastAt)) / 60_000) : null }))
+    .sort(
+      (a, b) =>
+        (a.minutesAgo ?? Infinity) - (b.minutesAgo ?? Infinity) ||
+        a.jalan.localeCompare(b.jalan, undefined, { numeric: true })
+    );
+
+  // ponytail: reads the jalan out of the address ("No. 12, Jalan SP 10/3"); add a houses.jalan column if formats vary.
+  const myJalan = (house.data.address as string).match(/Jalan .+/i)?.[0] ?? null;
+  return { jalans, myJalan, mine: jalans.find((j) => j.jalan === myJalan) };
+}
+
+async function OngoingPatrols() {
+  const result = await patrols();
+  if (!result) return <p className="m-0 text-xl">Could not load patrols.</p>;
+  const { jalans, myJalan, mine } = result;
+
+  return (
+    <>
+      <p
+        role="status"
+        className={`m-0 rounded-[20px] px-6 py-5 text-xl font-bold md:text-2xl ${
+          mine ? pillClasses[toneFor(mine.minutesAgo)] : "bg-[#e6e6e6] text-[#555]"
+        }`}
+      >
+        {!mine
+          ? `${myJalan ?? "Your jalan"} isn't on the guards' patrol route yet`
+          : mine.minutesAgo === null
+            ? `${mine.jalan} hasn't been patrolled yet`
+            : `${mine.jalan} was ${mine.minutesAgo <= PATROLLED_MIN ? "patrolled" : "last patrolled"} ${ago(mine.minutesAgo)} (${formatTime(mine.lastAt!)})`}
+      </p>
+
+      <ul className="m-0 flex list-none flex-col gap-3 p-0">
+        {jalans.map((j) => {
+          const tone = toneFor(j.minutesAgo);
+          return (
+            <li
+              key={j.jalan}
+              className="flex items-center justify-between gap-4 rounded-[20px] border border-[#e6e4df] px-6 py-5"
+            >
+              <span className="flex items-center gap-3 text-xl font-bold md:text-2xl">
+                <span className={`h-3 w-3 shrink-0 rounded-full ${dotClasses[tone]}`} aria-hidden="true" />
+                {j.jalan}
+              </span>
+
+              <span className={`shrink-0 rounded-full px-4 py-1 text-base font-bold ${pillClasses[tone]}`}>
+                {j.minutesAgo === null ? "Not patrolled yet" : ago(j.minutesAgo)}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </>
+  );
+}
 
 type Trip = { user_id: string; eta: string; resident: { full_name: string | null } | null };
 
@@ -165,34 +247,12 @@ export default function SecurityPage() {
               Ongoing Patrols
             </h2>
 
-            <ul className="m-0 flex list-none flex-col gap-3 p-0">
-              {patrols.map((p) => {
-                const tone = toneFor(p.minutesAgo);
-                return (
-                  <li
-                    key={p.id}
-                    className="flex items-center justify-between gap-4 rounded-[20px] border border-[#e6e4df] px-6 py-5"
-                  >
-                    <span className="flex items-center gap-3 text-xl font-bold md:text-2xl">
-                      <span
-                        className={`h-3 w-3 shrink-0 rounded-full ${dotClasses[tone]}`}
-                        aria-hidden="true"
-                      />
-                      {p.street}
-                    </span>
-
-                    <span
-                      className={`shrink-0 rounded-full px-4 py-1 text-base font-bold ${pillClasses[tone]}`}
-                    >
-                      {p.minutesAgo} minutes ago
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
+            <Suspense fallback={<p className="m-0 text-xl">Loading patrols...</p>}>
+              <OngoingPatrols />
+            </Suspense>
 
             <p className="m-0 mt-auto text-center text-base text-[#777]">
-              Times shown are the time the guard checked in at the street.
+              Times are when a guard last passed each jalan. Green means in the last 2 hours.
             </p>
           </article>
         </section>
